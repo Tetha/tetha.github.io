@@ -92,7 +92,7 @@ crazy things iptables can do aren't better.
 This is why we have written our iptables cookbook in the configuration management. Using this
 cookbook, the madness of whitelisting http + https to the world reduces to:
 
-```
+```ruby
 default['acme-iptables']['public-http']['allow'] = true
 ```
 
@@ -110,4 +110,54 @@ the chef server are hardcoded in 2 or 3 ways so it's really hard to break.
 That's a really good *soft layer*. You write down what you need, and it's hard to mess up
 too badly even if you try. 
 
-**TODO: terraform example, and maybe more**
+## Terraform
+
+Another pretty example is our terraform setup. We are currently running 2 layers 
+in our terraform setup. We have our *shared modules*. These shared modules define
+the structure of application clusters. On top of that we have the actual
+*module definitions*. These module definitions parametrize the shared modules and
+end up in the actual infrastructure running an application cluster. 
+
+For example, the shared module defines how app01, app02, master01 and es01 are
+networked. app01 and app02 are connected for hibernate caches, app01, app02, master01
+are in a security group for mysql traffic. However, master01 and es01 are 
+firewalled from each other - the mysql database and the elasticsearch cluster have
+no business talking to each other. 
+
+Based on this, our terraform modules are a real nightmare of remote, invisible action
+and sadly I don't see any good way to avoid that:
+
+ - Change the wrong security groups and you're possibly making a future security
+   incident far worse since firewalls don't prevent further lateral movement of an
+   attacker.
+ - Change the wrong volume / disk setup and in the best case you'll immediately
+   fail a database recovery, or you might cause a bunch of annoying out-of-service
+   work for someone a couple of month down the road.
+ - Change some of the lvm / disk setup scripting and you'll make the latter case
+   a lot worse
+   
+And the list goes on and on. I'd like this layer to be less magical and intertwined
+with other layers - and there are tasks that reduce the complexity - but at the moment
+that's what it is. It's a rough layer to handle once you have a couple of productive
+systems running on one of the shared modules. 
+
+But at the same time. Need to scale up a cluster by an application server? That's not hard:
+
+```hcl
+...
+   app06_enabled = true
+...
+```
+
+Need to clone a system for a customer specific task? Well copy the module configuration over and
+adjust:
+
+```hcl
+...
+customer = "random-org"
+...
+```
+
+And that's just it. It'll take care of monitoring, firewalls, integration with the configuration
+management, bootstrapping the secret management, work around a bunch of known issues. This is a
+nice soft layer, and most changes to our terraform configuration occur in this layer. As it should. 
